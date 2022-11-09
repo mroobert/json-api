@@ -7,17 +7,20 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/mroobert/json-api/internal/database"
 )
 
 // version contains the application version number.
 const version = "1.0.0"
 
-// config holds all the configuration settings for our application.
+// config holds all the configuration settings for the application.
 // We will read in these configuration settings from command-line
 // flags when the application starts.
 type config struct {
-	port int
+	db   database.Config
 	env  string
+	port int
 }
 
 // application holds the dependencies for our HTTP handlers, helpers,
@@ -28,20 +31,34 @@ type application struct {
 }
 
 func main() {
-	if err := run(); err != nil {
+	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
+
+	if err := run(logger); err != nil {
+		logger.Fatal(err)
 		os.Exit(1)
 	}
 }
 
 // run performs the startup and shutdown sequence.
-func run() error {
+func run(logger *log.Logger) error {
 	var cfg config
 
 	flag.IntVar(&cfg.port, "port", 4000, "API server port")
 	flag.StringVar(&cfg.env, "env", "development", "Environment (development|staging|production)")
+
+	flag.StringVar(&cfg.db.DSN, "db-dsn", os.Getenv("DATABASE"), "PostgreSQL DSN")
+	flag.IntVar(&cfg.db.MaxOpenConns, "db-max-open-conns", 25, "PostgreSQL max open connections")
+	flag.IntVar(&cfg.db.MaxIdleConns, "db-max-idle-conns", 25, "PostgreSQL max idle connections")
+	flag.StringVar(&cfg.db.MaxConnIdleTime, "db-max-idle-time", "15m", "PostgreSQL max connection idle time")
+
 	flag.Parse()
 
-	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
+	db, err := database.OpenConnection(cfg.db)
+	if err != nil {
+		return fmt.Errorf("error opening database: %v", err)
+	}
+	defer db.Close()
+	logger.Print("database connection pool established")
 
 	app := &application{
 		config: cfg,
@@ -58,8 +75,10 @@ func run() error {
 
 	// Start the HTTP server.
 	logger.Printf("starting %s server on %s", cfg.env, srv.Addr)
-	err := srv.ListenAndServe()
-	logger.Fatal(err)
+	err = srv.ListenAndServe()
+	if err != nil {
+		return fmt.Errorf("error starting %s server on %s", cfg.env, srv.Addr)
+	}
 
 	return err
 }
