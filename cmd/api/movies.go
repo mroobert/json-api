@@ -6,11 +6,30 @@ import (
 	"time"
 
 	"github.com/mroobert/json-api/internal/data"
+	"github.com/mroobert/json-api/internal/validator"
 )
 
 // createMovieHandler for the "POST /v1/movies" endpoint.
 func (app *application) createMovieHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "create a new movie")
+	var input data.NewMovie
+
+	err := app.readJSON(w, r, &input)
+	if err != nil {
+		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	vld := validator.New()
+	movie := new(data.Movie)
+	movie.FromDto(input)
+
+	if movie.ValidateMovie(vld); !vld.Valid() {
+		app.failedValidationResponse(w, r, vld.Errors)
+		return
+	}
+
+	// Dump the contents of the input struct in a HTTP response.
+	fmt.Fprintf(w, "%+v\n", input)
 }
 
 // showMovieHandler for the "GET /v1/movies/:id" endpoint.
