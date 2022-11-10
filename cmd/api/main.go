@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/mroobert/json-api/internal/data"
 	"github.com/mroobert/json-api/internal/database"
 )
 
@@ -28,6 +29,7 @@ type config struct {
 type application struct {
 	config config
 	logger *log.Logger
+	models data.Models
 }
 
 func main() {
@@ -63,6 +65,7 @@ func run(logger *log.Logger) error {
 	app := &application{
 		config: cfg,
 		logger: logger,
+		models: data.NewModels(db),
 	}
 
 	srv := &http.Server{
