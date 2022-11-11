@@ -46,9 +46,9 @@ type (
 	}
 
 	UpdateMovie struct {
-		Title   string   `json:"title"`
-		Year    int32    `json:"year"`
-		Runtime Runtime  `json:"runtime"`
+		Title   *string  `json:"title"`
+		Year    *int32   `json:"year"`
+		Runtime *Runtime `json:"runtime"`
 		Genres  []string `json:"genres"`
 	}
 )
@@ -70,25 +70,37 @@ func (m Movie) ValidateMovie(vld *validator.Validator) {
 	vld.Check(validator.Unique(m.Genres), "genres", "must not contain duplicate values")
 }
 
-func (m *Movie) FromNewMovie(movie NewMovie) {
-	m.Title = movie.Title
-	m.Year = movie.Year
-	m.Runtime = movie.Runtime
-	m.Genres = movie.Genres
+func (m *Movie) FromNewMovie(input NewMovie) {
+	m.Title = input.Title
+	m.Year = input.Year
+	m.Runtime = input.Runtime
+	m.Genres = input.Genres
 }
 
-func (m *Movie) FromUpdateMovie(movie UpdateMovie) {
-	m.Title = movie.Title
-	m.Year = movie.Year
-	m.Runtime = movie.Runtime
-	m.Genres = movie.Genres
+func (m *Movie) FromUpdateMovie(input UpdateMovie) {
+	if input.Title != nil {
+		m.Title = *input.Title
+	}
+
+	if input.Year != nil {
+		m.Year = *input.Year
+	}
+	if input.Runtime != nil {
+		m.Runtime = *input.Runtime
+	}
+	if input.Genres != nil {
+		m.Genres = input.Genres
+	}
 }
 
 // Insert will create a new movie in the database.
 func (m MovieModel) Insert(movie *Movie) error {
 	args := []any{movie.Title, movie.Year, movie.Runtime, movie.Genres}
 
-	return m.DB.QueryRow(context.TODO(), insertSQL, args...).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	return m.DB.QueryRow(ctx, insertSQL, args...).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
 }
 
 // Read will fetch a movie from the database.
@@ -98,7 +110,9 @@ func (m MovieModel) Read(id int64) (*Movie, error) {
 	}
 
 	var movie Movie
-	err := m.DB.QueryRow(context.TODO(), readSQL, id).Scan(
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := m.DB.QueryRow(ctx, readSQL, id).Scan(
 		&movie.ID,
 		&movie.CreatedAt,
 		&movie.Title,
@@ -120,6 +134,7 @@ func (m MovieModel) Read(id int64) (*Movie, error) {
 }
 
 // Update will update a movie from the database.
+// This operation is implementing optimistic locking.
 func (m MovieModel) Update(movie *Movie) error {
 	args := []any{
 		movie.Title,
@@ -127,9 +142,22 @@ func (m MovieModel) Update(movie *Movie) error {
 		movie.Runtime,
 		movie.Genres,
 		movie.ID,
+		movie.Version,
 	}
 
-	return m.DB.QueryRow(context.TODO(), updateSQL, args...).Scan(&movie.Version)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := m.DB.QueryRow(ctx, updateSQL, args...).Scan(&movie.Version)
+	if err != nil {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			return ErrEditConflict
+		default:
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Delete will delete a movie from the database.
@@ -138,7 +166,9 @@ func (m MovieModel) Delete(id int64) error {
 		return ErrRecordNotFound
 	}
 
-	result, err := m.DB.Exec(context.TODO(), deleteSQL, id)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	result, err := m.DB.Exec(ctx, deleteSQL, id)
 	if err != nil {
 		return err
 	}
