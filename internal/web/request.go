@@ -1,4 +1,4 @@
-package main
+package web
 
 import (
 	"encoding/json"
@@ -6,18 +6,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/julienschmidt/httprouter"
+	"github.com/mroobert/json-api/internal/validator"
 )
 
-// Used as an envelope type.
-type envelope map[string]any
-
-// readIDParam retrieves the "id" URL parameter from the current request context,
+// ReadIDParam retrieves the "id" URL parameter from the current request context,
 // then convert it to an integer and return it.
 // If the operation isn't successful, return 0 and an error.
-func (app *application) readIDParam(r *http.Request) (int64, error) {
+func ReadIDParam(r *http.Request) (int64, error) {
 	params := httprouter.ParamsFromContext(r.Context())
 
 	id, err := strconv.ParseInt(params.ByName("id"), 10, 64)
@@ -28,10 +28,10 @@ func (app *application) readIDParam(r *http.Request) (int64, error) {
 	return id, nil
 }
 
-// readJSON will decode the JSON from the request body as normal,
+// ReadJSON will decode the JSON from the request body as normal,
 // then triage the errors and replace them with our own
 // custom messages as necessary.
-func (app *application) readJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+func ReadJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	// Limit the size of the request body to 1MB.
 	maxBytes := 1_048_576
 	r.Body = http.MaxBytesReader(w, r.Body, int64(maxBytes))
@@ -95,32 +95,47 @@ func (app *application) readJSON(w http.ResponseWriter, r *http.Request, dst any
 	return nil
 }
 
-// writeJSON takes the destination http.ResponseWriter, the HTTP status code to send,
-//
-//	the data to encode to JSON, and a  header map containing any additional HTTP headers
-//
-// we want to include in the response.
-func (app *application) writeJSON(w http.ResponseWriter, status int, data envelope, headers http.Header) error {
-	// Encode the data to JSON, returning the error if there was one.
-	js, err := json.Marshal(data)
+// ReadString returns a string value from the query string, or the provided
+// default value if no matching key could be found.
+func ReadString(qs url.Values, key string, defaultValue string) string {
+	s := qs.Get(key)
+
+	if s == "" {
+		return defaultValue
+	}
+
+	return s
+}
+
+// ReadCSV helper reads a string value from the query string and then splits it
+// into a slice on the comma character. If no matching key could be found, it returns
+// the provided default value.
+func ReadCSV(qs url.Values, key string, defaultValue []string) []string {
+	csv := qs.Get(key)
+
+	if csv == "" {
+		return defaultValue
+	}
+
+	return strings.Split(csv, ",")
+}
+
+// ReadInt reads a string value from the query string and converts it to an
+// integer before returning. If no matching key could be found it returns the provided
+// default value. If the value couldn't be converted to an integer, then we record an
+// error message in the provided Validator instance.
+func ReadInt(qs url.Values, key string, defaultValue int, v *validator.Validator) int {
+	s := qs.Get(key)
+
+	if s == "" {
+		return defaultValue
+	}
+
+	i, err := strconv.Atoi(s)
 	if err != nil {
-		return err
+		v.AddError(key, "must be an integer value")
+		return defaultValue
 	}
 
-	// Append a newline to make it easier to view in terminal applications.
-	js = append(js, '\n')
-
-	// At this point, we know that we won't encounter any more errors before writing the
-	// response, so it's safe to add any headers that we want to include.
-	for key, value := range headers {
-		w.Header()[key] = value
-	}
-
-	// Add the "Content-Type: application/json" header, then write the status code and
-	// JSON response.
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	w.Write(js)
-
-	return nil
+	return i
 }

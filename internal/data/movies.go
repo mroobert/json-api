@@ -4,10 +4,12 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/mroobert/json-api/internal/database"
 	"github.com/mroobert/json-api/internal/validator"
 )
 
@@ -24,6 +26,7 @@ var updateSQL string
 var deleteSQL string
 
 type (
+	// Movie represents an individual movie.
 	Movie struct {
 		ID        int64     `json:"id"`                // Unique integer ID for the movie
 		CreatedAt time.Time `json:"-"`                 // Timestamp for when the movie is added to our database
@@ -33,11 +36,11 @@ type (
 		Genres    []string  `json:"genres,omitempty"`  // Slice of genres for the movie (romance, comedy, etc.)
 		Version   int32     `json:"version"`           // The version number starts at 1 and will be incremented each time the movie information is updated
 	}
-
 	MovieModel struct {
 		DB *pgxpool.Pool
 	}
 
+	// NewMovie contains information needed to create a new Movie.
 	NewMovie struct {
 		Title   string   `json:"title"`
 		Year    int32    `json:"year"`
@@ -45,6 +48,10 @@ type (
 		Genres  []string `json:"genres"`
 	}
 
+	// UpdateMovie contains information needed to update a Movie.
+	// All fields are optional so clients can send just the fields they want
+	// changed. It uses pointer fields so we can differentiate between a field that
+	// was not provided and a field that was provided as explicitly blank.
 	UpdateMovie struct {
 		Title   *string  `json:"title"`
 		Year    *int32   `json:"year"`
@@ -178,4 +185,56 @@ func (m MovieModel) Delete(id int64) error {
 	}
 
 	return nil
+}
+
+// ReadAll will fetch all movies based on the provided parameters.
+// It uses a full-text search for the title.
+func (m MovieModel) ReadAll(title string, genres []string, filters database.Filters) ([]*Movie, database.Metadata, error) {
+	query := fmt.Sprintf(`
+        SELECT  count(*) OVER(), id, created_at, title, year, runtime, genres, version
+        FROM movies
+        WHERE (to_tsvector('simple', title) @@ plainto_tsquery('simple', $1) OR $1 = '') 
+        AND (genres @> $2 OR $2 = '{}')     
+        ORDER BY %s %s, id ASC
+		LIMIT $3 OFFSET $4`, filters.SortColumn(), filters.SortDirection())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	args := []any{title, genres, filters.Limit(), filters.Offset()}
+	rows, err := m.DB.Query(ctx, query, args...)
+	if err != nil {
+		return nil, database.Metadata{}, err
+	}
+	defer rows.Close()
+
+	totalRecords := 0
+	movies := []*Movie{}
+	for rows.Next() {
+		var movie Movie
+
+		err := rows.Scan(
+			&totalRecords,
+			&movie.ID,
+			&movie.CreatedAt,
+			&movie.Title,
+			&movie.Year,
+			&movie.Runtime,
+			&movie.Genres,
+			&movie.Version,
+		)
+		if err != nil {
+			return nil, database.Metadata{}, err
+		}
+
+		movies = append(movies, &movie)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, database.Metadata{}, err
+	}
+
+	metadata := database.NewMetadata(totalRecords, filters.Page, filters.PageSize)
+
+	return movies, metadata, err
 }
