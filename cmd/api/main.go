@@ -10,6 +10,7 @@ import (
 
 	"github.com/mroobert/json-api/internal/data"
 	"github.com/mroobert/json-api/internal/database"
+	"github.com/mroobert/json-api/internal/logger"
 )
 
 // version contains the application version number.
@@ -28,21 +29,21 @@ type config struct {
 // and middleware.
 type application struct {
 	config config
-	logger *log.Logger
+	logger *logger.Logger
 	models data.Models
 }
 
 func main() {
-	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
+	logger := logger.New(os.Stdout, logger.LevelInfo)
 
 	if err := run(logger); err != nil {
-		logger.Fatal(err)
+		logger.PrintFatal(err, nil)
 		os.Exit(1)
 	}
 }
 
 // run performs the startup and shutdown sequence.
-func run(logger *log.Logger) error {
+func run(logger *logger.Logger) error {
 	var cfg config
 
 	flag.IntVar(&cfg.port, "port", 4000, "API server port")
@@ -60,7 +61,7 @@ func run(logger *log.Logger) error {
 		return fmt.Errorf("error opening database: %v", err)
 	}
 	defer db.Close()
-	logger.Print("database connection pool established")
+	logger.PrintInfo("database connection pool established", nil)
 
 	app := &application{
 		config: cfg,
@@ -71,13 +72,17 @@ func run(logger *log.Logger) error {
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.port),
 		Handler:      app.routes(),
+		ErrorLog:     log.New(logger, "", 0),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}
 
 	// Start the HTTP server.
-	logger.Printf("starting %s server on %s", cfg.env, srv.Addr)
+	logger.PrintInfo("starting server", map[string]string{
+		"addr": srv.Addr,
+		"env":  cfg.env,
+	})
 	err = srv.ListenAndServe()
 	if err != nil {
 		return fmt.Errorf("error starting %s server on %s", cfg.env, srv.Addr)

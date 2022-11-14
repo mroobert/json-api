@@ -16,6 +16,7 @@
 
 # Configuration
 .env
+.vscode
 
 # Local infrastructure
 local-infra
