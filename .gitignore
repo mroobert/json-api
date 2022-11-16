@@ -18,6 +18,9 @@
 .env
 .vscode
 
+# Scripts
+scripts
+
 # Local infrastructure
 local-infra
 

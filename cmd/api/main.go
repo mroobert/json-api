@@ -20,8 +20,13 @@ const version = "1.0.0"
 // We will read in these configuration settings from command-line
 // flags when the application starts.
 type config struct {
-	db   database.Config
-	env  string
+	db      database.Config
+	env     string
+	limiter struct {
+		rps     float64
+		burst   int
+		enabled bool
+	}
 	port int
 }
 
@@ -53,6 +58,10 @@ func run(logger *logger.Logger) error {
 	flag.IntVar(&cfg.db.MaxOpenConns, "db-max-open-conns", 25, "PostgreSQL max open connections")
 	flag.IntVar(&cfg.db.MaxIdleConns, "db-max-idle-conns", 25, "PostgreSQL max idle connections")
 	flag.StringVar(&cfg.db.MaxConnIdleTime, "db-max-idle-time", "15m", "PostgreSQL max connection idle time")
+
+	flag.Float64Var(&cfg.limiter.rps, "limiter-rps", 2, "Rate limiter maximum requests per second")
+	flag.IntVar(&cfg.limiter.burst, "limiter-burst", 4, "Rate limiter maximum burst")
+	flag.BoolVar(&cfg.limiter.enabled, "limiter-enabled", true, "Enable rate limiter")
 
 	flag.Parse()
 

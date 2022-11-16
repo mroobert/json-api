@@ -17,8 +17,6 @@ func (app *application) healthcheckHandler(w http.ResponseWriter, r *http.Reques
 		},
 	}
 
-	panic("test panic")
-
 	err := web.WriteJSON(w, http.StatusOK, env, nil)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
