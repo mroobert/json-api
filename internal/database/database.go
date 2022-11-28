@@ -8,6 +8,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const UniqueViolation = "23505"
+
 // Config represents configuration properties for using the database.
 //
 // Notes for configuring the connection pool:

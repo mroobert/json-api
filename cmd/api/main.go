@@ -30,9 +30,9 @@ type config struct {
 // application holds the dependencies for our HTTP handlers, helpers,
 // and middleware.
 type application struct {
-	config config
-	logger *logger.Logger
-	models data.Models
+	config       config
+	logger       *logger.Logger
+	repositories data.Repositories
 }
 
 func main() {
@@ -70,9 +70,9 @@ func run(logger *logger.Logger) error {
 	logger.PrintInfo("database connection pool established", nil)
 
 	app := &application{
-		config: cfg,
-		logger: logger,
-		models: data.NewModels(db),
+		config:       cfg,
+		logger:       logger,
+		repositories: data.NewRepositories(db),
 	}
 
 	// Start http server.

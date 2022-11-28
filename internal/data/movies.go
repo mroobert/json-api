@@ -13,17 +13,17 @@ import (
 	"github.com/mroobert/json-api/internal/validator"
 )
 
-//go:embed queries/insert.sql
-var insertSQL string
+//go:embed queries/movies/create.sql
+var createMovieSQL string
 
-//go:embed queries/read.sql
-var readSQL string
+//go:embed queries/movies/read.sql
+var readMovieSQL string
 
-//go:embed queries/update.sql
-var updateSQL string
+//go:embed queries/movies/update.sql
+var updateMovieSQL string
 
-//go:embed queries/delete.sql
-var deleteSQL string
+//go:embed queries/movies/delete.sql
+var deleteMovieSQL string
 
 type (
 	// Movie represents an individual movie.
@@ -36,11 +36,13 @@ type (
 		Genres    []string  `json:"genres,omitempty"`  // Slice of genres for the movie (romance, comedy, etc.)
 		Version   int32     `json:"version"`           // The version number starts at 1 and will be incremented each time the movie information is updated
 	}
-	MovieModel struct {
+
+	// MovieRepository manages the set of APIs for movie database access.
+	MovieRepository struct {
 		DB *pgxpool.Pool
 	}
 
-	// NewMovie contains information needed to create a new Movie.
+	// NewMovie contains information needed to create a new movie.
 	NewMovie struct {
 		Title   string   `json:"title"`
 		Year    int32    `json:"year"`
@@ -60,7 +62,7 @@ type (
 	}
 )
 
-func (m Movie) ValidateMovie(vld *validator.Validator) {
+func (m Movie) Validate(vld *validator.Validator) {
 	vld.Check(m.Title != "", "title", "must be provided")
 	vld.Check(len(m.Title) <= 500, "title", "must not be more than 500 bytes long")
 
@@ -100,18 +102,18 @@ func (m *Movie) FromUpdateMovie(input UpdateMovie) {
 	}
 }
 
-// Insert will create a new movie in the database.
-func (m MovieModel) Insert(movie *Movie) error {
+// Create will insert a new movie in the database.
+func (r MovieRepository) Create(movie *Movie) error {
 	args := []any{movie.Title, movie.Year, movie.Runtime, movie.Genres}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	return m.DB.QueryRow(ctx, insertSQL, args...).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
+	return r.DB.QueryRow(ctx, createMovieSQL, args...).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
 }
 
 // Read will fetch a movie from the database.
-func (m MovieModel) Read(id int64) (*Movie, error) {
+func (r MovieRepository) Read(id int64) (*Movie, error) {
 	if id < 1 {
 		return nil, ErrRecordNotFound
 	}
@@ -119,7 +121,7 @@ func (m MovieModel) Read(id int64) (*Movie, error) {
 	var movie Movie
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	err := m.DB.QueryRow(ctx, readSQL, id).Scan(
+	err := r.DB.QueryRow(ctx, readMovieSQL, id).Scan(
 		&movie.ID,
 		&movie.CreatedAt,
 		&movie.Title,
@@ -142,7 +144,7 @@ func (m MovieModel) Read(id int64) (*Movie, error) {
 
 // Update will update a movie from the database.
 // This operation is implementing optimistic locking.
-func (m MovieModel) Update(movie *Movie) error {
+func (r MovieRepository) Update(movie *Movie) error {
 	args := []any{
 		movie.Title,
 		movie.Year,
@@ -154,7 +156,7 @@ func (m MovieModel) Update(movie *Movie) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	err := m.DB.QueryRow(ctx, updateSQL, args...).Scan(&movie.Version)
+	err := r.DB.QueryRow(ctx, updateMovieSQL, args...).Scan(&movie.Version)
 	if err != nil {
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
@@ -168,14 +170,14 @@ func (m MovieModel) Update(movie *Movie) error {
 }
 
 // Delete will delete a movie from the database.
-func (m MovieModel) Delete(id int64) error {
+func (r MovieRepository) Delete(id int64) error {
 	if id < 1 {
 		return ErrRecordNotFound
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	result, err := m.DB.Exec(ctx, deleteSQL, id)
+	result, err := r.DB.Exec(ctx, deleteMovieSQL, id)
 	if err != nil {
 		return err
 	}
@@ -189,7 +191,7 @@ func (m MovieModel) Delete(id int64) error {
 
 // ReadAll will fetch all movies based on the provided parameters.
 // It uses a full-text search for the title.
-func (m MovieModel) ReadAll(title string, genres []string, filters database.Filters) ([]*Movie, database.Metadata, error) {
+func (r MovieRepository) ReadAll(title string, genres []string, filters database.Filters) ([]*Movie, database.Metadata, error) {
 	query := fmt.Sprintf(`
         SELECT  count(*) OVER(), id, created_at, title, year, runtime, genres, version
         FROM movies
@@ -202,7 +204,7 @@ func (m MovieModel) ReadAll(title string, genres []string, filters database.Filt
 	defer cancel()
 
 	args := []any{title, genres, filters.Limit(), filters.Offset()}
-	rows, err := m.DB.Query(ctx, query, args...)
+	rows, err := r.DB.Query(ctx, query, args...)
 	if err != nil {
 		return nil, database.Metadata{}, err
 	}

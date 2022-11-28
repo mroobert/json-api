@@ -13,7 +13,10 @@ import (
 
 // createMovieHandler for the "POST /v1/movies" endpoint.
 func (app *application) createMovieHandler(w http.ResponseWriter, r *http.Request) {
-	var input data.NewMovie
+	var (
+		input data.NewMovie
+		movie data.Movie
+	)
 
 	err := web.ReadJSON(w, r, &input)
 	if err != nil {
@@ -22,15 +25,14 @@ func (app *application) createMovieHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	vld := validator.New()
-	movie := new(data.Movie)
 	movie.FromNewMovie(input)
 
-	if movie.ValidateMovie(vld); !vld.Valid() {
+	if movie.Validate(vld); !vld.Valid() {
 		app.failedValidationResponse(w, r, vld.Errors)
 		return
 	}
 
-	err = app.models.Movies.Insert(movie)
+	err = app.repositories.Movies.Create(&movie)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
@@ -53,7 +55,7 @@ func (app *application) readMovieHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	movie, err := app.models.Movies.Read(id)
+	movie, err := app.repositories.Movies.Read(id)
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrRecordNotFound):
@@ -80,7 +82,7 @@ func (app *application) updateMovieHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	movie, err := app.models.Movies.Read(id)
+	movie, err := app.repositories.Movies.Read(id)
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrRecordNotFound):
@@ -100,12 +102,12 @@ func (app *application) updateMovieHandler(w http.ResponseWriter, r *http.Reques
 	}
 	vld := validator.New()
 	movie.FromUpdateMovie(input)
-	if movie.ValidateMovie(vld); !vld.Valid() {
+	if movie.Validate(vld); !vld.Valid() {
 		app.failedValidationResponse(w, r, vld.Errors)
 		return
 	}
 
-	err = app.models.Movies.Update(movie)
+	err = app.repositories.Movies.Update(movie)
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrEditConflict):
@@ -132,7 +134,7 @@ func (app *application) deleteMovieHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	err = app.models.Movies.Delete(id)
+	err = app.repositories.Movies.Delete(id)
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrRecordNotFound):
@@ -175,7 +177,7 @@ func (app *application) readAllMoviesHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	movies, metadata, err := app.models.Movies.ReadAll(input.Title, input.Genres, input.Filters)
+	movies, metadata, err := app.repositories.Movies.ReadAll(input.Title, input.Genres, input.Filters)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
