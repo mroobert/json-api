@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/mroobert/json-api/internal/data"
 	"github.com/mroobert/json-api/internal/database"
 	"github.com/mroobert/json-api/internal/logger"
+	"github.com/mroobert/json-api/internal/mailer"
 )
 
 // version contains the application version number.
@@ -25,6 +27,13 @@ type config struct {
 		enabled bool
 	}
 	port int
+	smtp struct {
+		host     string
+		port     int
+		username string
+		password string
+		sender   string
+	}
 }
 
 // application holds the dependencies for our HTTP handlers, helpers,
@@ -33,6 +42,8 @@ type application struct {
 	config       config
 	logger       *logger.Logger
 	repositories data.Repositories
+	mailer       mailer.Mailer
+	wg           sync.WaitGroup
 }
 
 func main() {
@@ -60,6 +71,12 @@ func run(logger *logger.Logger) error {
 	flag.IntVar(&cfg.limiter.burst, "limiter-burst", 4, "Rate limiter maximum burst")
 	flag.BoolVar(&cfg.limiter.enabled, "limiter-enabled", true, "Enable rate limiter")
 
+	flag.StringVar(&cfg.smtp.host, "smtp-host", "smtp.mailtrap.io", "SMTP host")
+	flag.IntVar(&cfg.smtp.port, "smtp-port", 2525, "SMTP port")
+	flag.StringVar(&cfg.smtp.username, "smtp-username", "adabae21725174", "SMTP username")
+	flag.StringVar(&cfg.smtp.password, "smtp-password", "d22607e75cecd5", "SMTP password")
+	flag.StringVar(&cfg.smtp.sender, "smtp-sender", "JSON-API <no-reply@jsonapi.mroobert.net>", "SMTP sender")
+
 	flag.Parse()
 
 	db, err := database.OpenConnection(cfg.db)
@@ -73,6 +90,13 @@ func run(logger *logger.Logger) error {
 		config:       cfg,
 		logger:       logger,
 		repositories: data.NewRepositories(db),
+		mailer: mailer.New(
+			cfg.smtp.host,
+			cfg.smtp.port,
+			cfg.smtp.username,
+			cfg.smtp.password,
+			cfg.smtp.sender,
+		),
 	}
 
 	// Start http server.
