@@ -20,7 +20,7 @@ const UniqueViolation = "23505"
 // to act as a rudimentary throttle.Ideally we should tweak this value based on the
 // results of benchmarking and load-testing.
 //
-// 2. In general, higher MaxOpenConns and MaxIdleConns values will lead to better performance.
+// 2. In general, higher MaxOpenConns values will lead to better performance.
 // But the returns are diminishing, and you should be aware that having a too-large idle connection
 // pool (with connections that are not frequently re-used) can actually lead to reduced performance
 // and unnecessary resource consumption.
@@ -34,7 +34,7 @@ const UniqueViolation = "23505"
 type Config struct {
 	DSN             string
 	MaxOpenConns    int    // limit on the number of ‘open’ connections (in-use + idle connections)
-	MaxIdleConns    int    // limit on the number of idle connections
+	MinConns        int    // minimum size of the pool
 	MaxConnIdleTime string // sets the maximum length of time that a connection can be idle for before it is marked as expired
 }
 
@@ -50,6 +50,7 @@ func OpenConnection(cfg Config) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 	pool.Config().MaxConnIdleTime = duration
+	pool.Config().MinConns = int32(cfg.MinConns)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

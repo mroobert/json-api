@@ -64,7 +64,7 @@ func run(logger *logger.Logger) error {
 
 	flag.StringVar(&cfg.db.DSN, "db-dsn", os.Getenv("DATABASE"), "PostgreSQL DSN")
 	flag.IntVar(&cfg.db.MaxOpenConns, "db-max-open-conns", 25, "PostgreSQL max open connections")
-	flag.IntVar(&cfg.db.MaxIdleConns, "db-max-idle-conns", 25, "PostgreSQL max idle connections")
+	flag.IntVar(&cfg.db.MinConns, "db-min-conns", 25, "PostgreSQL mininum size pool")
 	flag.StringVar(&cfg.db.MaxConnIdleTime, "db-max-idle-time", "15m", "PostgreSQL max connection idle time")
 
 	flag.Float64Var(&cfg.limiter.rps, "limiter-rps", 2, "Rate limiter maximum requests per second")
